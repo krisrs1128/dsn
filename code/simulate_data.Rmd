@@ -1,0 +1,59 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library("splines")
+x <- seq(0, 1, 0.005)
+H <- ns(x, knots = seq(.1, .9, .2), intercept = TRUE)
+n_funs <- 5
+
+result <- matrix(0, length(x), n_funs + 1)
+result[, 1] <- x
+
+for (i in seq_len(n_funs)) {
+  beta <- rnorm(ncol(H))
+  result[, i + 1] <- H %*% beta + rnorm(nrow(H), 0, 0.1)
+  result[, i + 1] <- scale(result[, i + 1])
+}
+```
+
+```{r}
+library("dplyr")
+library("readr")
+library("reshape2")
+library("ggplot2")
+mresult <- data.frame(result) %>%
+  melt(id.vars = "X1", value.name = "y")
+colnames(mresult)[1] <- "x"
+colnames(mresult)[2] <- "f"
+
+theme_set(theme_bw()) 
+ggplot(mresult) +
+  geom_point(aes(x = x, y = y, col = f)) +
+  scale_color_brewer(palette = "Set2") +
+  facet_wrap(~f)
+```
+
+```{r}
+write_csv(data.frame(result), "result.csv")
+write_csv(mresult, "mresult.csv")
+```
+
+```{r}
+library("gganimate")
+y_hats <- read_csv("model_one_y_hats.csv")
+xy <- y_hats %>%
+  filter(epoch == 0)
+
+p <- ggplot(y_hats %>% filter(epoch %% 50 == 0)) + 
+  geom_point(aes(x = x, y = y, col = as.factor(f))) +
+  geom_point(aes(x = x, y = y_hat), size = 0.5, col = "#153944") +
+  scale_color_brewer(palette = "Set2") +
+  facet_wrap(~ f) +
+  transition_time(epoch) +
+  theme(legend.position = "bottom")
+
+animate(p, fps=6)
+```

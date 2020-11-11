@@ -1,0 +1,169 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library("PMA")
+library("ggplot2")
+library("dplyr")
+library("readr")
+library("reshape2")
+theme_set(theme_bw())
+```
+
+```{r}
+svcca <- function(h1, h2, K = 25, L = 8) {
+  svd_1 <- svd(h1)
+  svd_2 <- svd(h2)
+  
+  h1_red <- svd_1$u[, 1:K] %*% diag(svd_1$d[1:K])
+  h2_red <- svd_2$u[, 1:K] %*% diag(svd_2$d[1:K])
+  cca_res <- CCA(h1_red, h2_red, standardize = FALSE, K = L, trace = FALSE)
+  list("cca" = cca_res, "rho" = mean(cca_res$cors))
+}
+
+read_activations <- function(base_path, n_layers = 4) {
+  hs <- list()
+  h_mats <- list()
+  
+  for (i in seq(n_layers)) {
+    h_mats[[i]] <- read_csv(sprintf("%s_%s.csv", base_path, i - 1), col_types = cols())
+    hs[[i]] <- h_mats[[i]]
+    h_mats[[i]] <- as.matrix(h_mats[[i]][, -1]) # remove x inputs
+    
+    hs[[i]]$model <- base_path
+    hs[[i]]$layer <- i
+  }
+  
+  list("h_df" = do.call(rbind, hs), "h_mat" = h_mats)
+}
+
+neurons_order <- function(hs, i = 3) {
+  hclust_ <- hs %>%
+    filter(layer == i) %>%
+    select(-model, -layer, -`0`) %>%
+    as.matrix() %>%
+    t() %>%
+    dist() %>%
+    hclust()
+  
+  hclust_$order
+}
+
+plot_activations <- function(hs, k=4) {
+  mhs <- melt(hs, variable.name = "neuron", id.vars = c("model", "layer", "0"))
+  mhs$neuron <- factor(mhs$neuron, levels = neurons_order(hs, k))
+  ggplot(mhs %>% filter(layer == k)) +
+    geom_tile(aes(x = `0`, y = neuron, fill = value)) +
+    scale_fill_gradient2(high = "#608b8a", low = "#b38cc0", limits = c(-15, 12)) +
+    labs(x = "x") +
+    scale_x_continuous(expand = c(0, 0)) +
+    facet_grid(layer ~ .) +
+    theme(
+      axis.text.y = element_text(size = 3), 
+      axis.ticks = element_blank(),
+      legend.position = "bottom"
+    )
+}
+```
+
+
+```{r}
+result <- read_activations("../data/activations_model_one_1150")
+hs <- result$h_df
+h_mats <- result$h_mat
+```
+
+```{r}
+mhs <- melt(hs, variable.name = "neuron", id.vars = c("model", "layer", "0"))
+ggplot(mhs %>% filter(as.integer(neuron) < 20)) +
+  geom_point(aes(x = `0`, y = value), size = 0.2, alpha = 0.4) +
+  facet_wrap(~layer)
+```
+
+
+```{r}
+plot_activations(hs)
+```
+
+```{r}
+svcca(h_mats[[1]], h_mats[[4]])
+svcca(h_mats[[1]], h_mats[[2]])
+```
+```{r}
+acts <- list(
+  "500" = read_activations("../data/activations_model_one_500"),
+  "700" = read_activations("../data/activations_model_one_700"),
+  "1100" = read_activations("../data/activations_model_one_1150"),
+  "1200" = read_activations("../data/activations_model_one_1000"),
+  "50" = read_activations("../data/activations_model_one_50"),
+  "400" = read_activations("../data/activations_model_one_400")
+)
+
+# similarity between layer 1's
+svcca(acts[["50"]]$h_mat[[2]], acts[["500"]]$h_mat[[2]])
+svcca(acts[["400"]]$h_mat[[2]], acts[["500"]]$h_mat[[2]])
+
+# similarity between layer 4's
+svcca(acts[["50"]]$h_mat[[4]], acts[["500"]]$h_mat[[4]])
+svcca(acts[["400"]]$h_mat[[4]], acts[["500"]]$h_mat[[4]])
+```
+
+```{r}
+plot_activations(acts[["400"]]$h_df)
+plot_activations(acts[["1200"]]$h_df)
+```
+
+
+```{r}
+# similarity between layers 2 and 4
+plot_activations(acts[["1200"]]$h_df, 2)
+ggsave("../extra_figures/layer_2_vs_4_2.png")
+plot_activations(acts[["1200"]]$h_df, 4)
+ggsave("../extra_figures/layer_2_vs_4_4.png")
+test <- svcca(acts[["1200"]]$h_mat[[2]], acts[["1200"]]$h_mat[[4]])
+plot(test$cca$cors, ylab = expression(rho[k]), ylim = c(0, 1))
+abline(b = 0, a = test$rho, col = "red")
+```
+
+```{r}
+# similarity for layer 4 across epochs
+plot_activations(acts[["50"]]$h_df, 4)
+plot_activations(acts[["1200"]]$h_df, 4)
+test <- svcca(acts[["50"]]$h_mat[[4]], acts[["1200"]]$h_mat[[4]])
+plot(test$cca$cors, ylab = expression(rho[k]), ylim = c(0, 1))
+abline(b = 0, a = test$rho, col = "red")
+```
+
+
+```{r}
+# similarity for layer 4 across epochs
+plot_activations(acts[["50"]]$h_df, 2)
+ggsave("../extra_figures/layer_2_50.png")
+plot_activations(acts[["1200"]]$h_df, 2)
+ggsave("../extra_figures/layer_2_1200.png")
+test <- svcca(acts[["50"]]$h_mat[[2]], acts[["1200"]]$h_mat[[2]])
+png("../extra_figures/layer_2_cmp.png")
+plot(test$cca$cors, ylab = expression(rho[k]), ylim = c(0, 1))
+abline(b = 0, a = test$rho, col = "red")
+dev.off()
+```
+```{r}
+# similarity for layer 4 across epochs
+plot_activations(acts[["50"]]$h_df)
+ggsave("../extra_figures/layer_4_50.png")
+plot_activations(acts[["1200"]]$h_df)
+ggsave("../extra_figures/layer_4_1200.png")
+test <- svcca(acts[["50"]]$h_mat[[4]], acts[["1200"]]$h_mat[[4]])
+png("../extra_figures/layer_4_cmp.png")
+plot(test$cca$cors, ylab = expression(rho[k]), ylim = c(0, 1))
+abline(b = 0, a = test$rho, col = "red")
+dev.off()
+```
+
+
+```{r}
+plot_activations(acts[["700"]]$h_df)
+ggsave("../extra_figures/layer_4_700.png")
+```

@@ -1,0 +1,74 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library("dplyr")
+library("ggplot2")
+library("gganimate")
+library("readr")
+library("reshape2")
+theme_set(theme_bw())
+```
+
+
+```{r}
+x0 <- read_csv("data/vae/x0.csv")
+z_samples <- read_csv("data/vae/z_samples.csv")
+z_interp <- read_csv("data/vae/z_interp.csv")
+x_hat <- read_csv("data/vae/x_hat.csv")
+```
+
+```{r}
+z_interp$index <- seq_len(nrow(z_interp))
+mz_interp <- melt(z_interp, id.vars = "index")
+
+ggplot(mz_interp) +
+  geom_segment(aes(x = variable, xend = variable, yend = value, y = 0)) +
+  geom_point(aes(x = variable, y = value)) +
+  labs(y = "z", x = "Dimension") +
+  transition_time(index)
+```
+
+```{r}
+head(x_hat)
+x_hat$index <- seq_len(nrow(x_hat))
+mx_hat <- melt(x_hat, id.vars = "index") %>%
+  arrange(index) %>%
+  mutate(
+    variable = as.numeric(variable),
+    i = rep(seq_len(28), 28 * nrow(x_hat)),
+    j = floor(variable / 28) + 1
+  )
+
+ggplot(mx_hat) +
+  geom_raster(aes(x = i, y = j, fill = value)) +
+  scale_y_reverse(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  coord_fixed() +
+  scale_fill_gradient(low = "white", high = "black") +
+  theme(legend.position = "none") +
+  transition_time(index)
+```
+
+```{r}
+x0$index <- 1:nrow(x0)
+x0 <- x0[1:10, ]
+mx0 <- melt(x0, id.vars = "index") %>%
+  arrange(index) %>%
+  mutate(
+    variable = as.numeric(variable),
+    i = rep(seq_len(28), 28 * nrow(x0)),
+    j = floor(variable / 28) + 1
+  )
+
+ggplot(mx0) +
+  geom_raster(aes(x = i, y = j, fill = value)) +
+  scale_y_reverse(expand = c(0, 0)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  coord_fixed() +
+  scale_fill_gradient(low = "white", high = "black") +
+  theme(legend.position = "none")
+```
+
